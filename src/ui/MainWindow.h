@@ -24,8 +24,8 @@ public:
     ~MainWindow() override;
 
 private slots:
-    void onPlayButtonClicked();
-    void onPauseButtonClicked();
+    void onModeButtonClicked();
+    void onPauseOrPlayButtonClicked();
     void onStopButtonClicked();
     void onPreviousButtonClicked();
     void onNextButtonClicked();
@@ -39,15 +39,17 @@ private slots:
     void onPlaylistComboBoxChanged(int index); // 歌单切换
 
     void onFavoriteSongRequested(QPoint pos); // 收藏歌曲
+    void onSelectPlayModeRequested(QPoint pos); // 选择播放模式
 
 private:
     Core _core;
     PlaylistView* _playlistView;
     QComboBox* _playlistComboBox; // 歌单下拉框
 
+    QPushButton* _modeButton; // 模式按钮
+
     // 播放控制按钮
-    QPushButton *_playButton;
-    QPushButton *_pauseButton;
+    QPushButton *_pauseOrPlayButton; // 播放/暂停按钮
     QPushButton *_stopButton;
     QPushButton *_previousButton;
     QPushButton *_nextButton;
@@ -63,16 +65,21 @@ private:
     QLabel *_volumeLabel;
     bool _volumeButtonsVisible; // 音量按钮是否可见
 
+    const std::string PLAY_LIST_FILE = "playlists.txt"; // 歌单文件名
+
     // 歌曲信息
     QLabel *_currentSongLabel;
     QLabel *_currentTimeLabel;
     QLabel *_totalTimeLabel;
     QSlider *_positionSlider;
 
+    void _refreshUI(); // 刷新界面
+
     void _updateCurrentSongLabel();
     void _updateTimeLabels();
     void _updatePositionSlider();
+    void _updatePlayStateLabel();
+    void _updatePlayModeButton();
 
-    void _refreshPlaylistComboBox(); // 刷新歌单下拉框
-    int _currentPlaylistIndex; // 当前选择的歌单索引
+    void _updatePlaylistComboBox(); // 刷新歌单下拉框
 };

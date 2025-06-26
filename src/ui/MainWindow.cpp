@@ -8,13 +8,15 @@
 #include <QDebug> // 添加调试信息
 #include <QPointer>
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVisible(false), _currentPlaylistIndex(0) {
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVisible(false) {
 
-    _core.loadPlaylistsFromFile("playlists.txt"); // 加载播放列表
+    _core.loadPlaylistsFromFile(PLAY_LIST_FILE); // 加载播放列表
 
     // 创建 UI 元素
-    _playButton = new QPushButton("Play", this);
-    _pauseButton = new QPushButton("Pause", this);
+    _modeButton = new QPushButton("Mode", this);
+    _modeButton->setContextMenuPolicy(Qt::CustomContextMenu); // 允许自定义右键菜单
+
+    _pauseOrPlayButton = new QPushButton("Play", this);
     _stopButton = new QPushButton("Stop", this);
     _previousButton = new QPushButton("Previous", this);
     _nextButton = new QPushButton("Next", this);
@@ -35,9 +37,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVis
     _playlistView->setContextMenuPolicy(Qt::CustomContextMenu); // 允许自定义右键菜单
 
     _playlistComboBox = new QComboBox(this);  // 歌单下拉框
-    _refreshPlaylistComboBox(); // 刷新歌单下拉框
 
-    _playlistView->refreshPlaylist(_core.getPlaylist(_currentPlaylistIndex)); // 刷新播放列表
 
     _volumeSlider->setRange(0, 100);
     _volumeSlider->setValue(100);
@@ -50,10 +50,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVis
 
     // 布局
     QHBoxLayout *controlLayout = new QHBoxLayout;
-    controlLayout->addWidget(_previousButton);
-    controlLayout->addWidget(_playButton);
-    controlLayout->addWidget(_pauseButton);
+    controlLayout->addWidget(_modeButton);
     controlLayout->addWidget(_stopButton);
+    controlLayout->addWidget(_previousButton);
+    controlLayout->addWidget(_pauseOrPlayButton);
     controlLayout->addWidget(_nextButton);
     controlLayout->addWidget(_addButton);
 
@@ -82,8 +82,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVis
     setCentralWidget(centralWidget);
 
     // 连接信号和槽
-    connect(_playButton, &QPushButton::clicked, this, &MainWindow::onPlayButtonClicked);
-    connect(_pauseButton, &QPushButton::clicked, this, &MainWindow::onPauseButtonClicked);
+    connect(_modeButton, &QPushButton::clicked, this, &MainWindow::onModeButtonClicked);
+    connect(_pauseOrPlayButton, &QPushButton::clicked, this, &MainWindow::onPauseOrPlayButtonClicked);
     connect(_stopButton, &QPushButton::clicked, this, &MainWindow::onStopButtonClicked);
     connect(_previousButton, &QPushButton::clicked, this, &MainWindow::onPreviousButtonClicked);
     connect(_nextButton, &QPushButton::clicked, this, &MainWindow::onNextButtonClicked);
@@ -97,14 +97,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVis
 
     // 右键菜单
     connect(_playlistView, &PlaylistView::customContextMenuRequested, this, &MainWindow::onFavoriteSongRequested);
+    connect(_modeButton, &QPushButton::customContextMenuRequested, this, &MainWindow::onSelectPlayModeRequested);
 
     // 歌单下拉框
     connect(_playlistComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onPlaylistComboBoxChanged);
+    _updatePlaylistComboBox();
 
-    // 定时器更新时间标签
+    _refreshUI(); // 刷新 UI
+
+    // 定时器更新 
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &MainWindow::_updateTimeLabels);
-    timer->start(1000); // 每秒更新一次
+    timer->start(500);
 
     // 初始化
     setWindowTitle("Music Player");
@@ -112,8 +116,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), _volumeButtonsVis
 }
 
 MainWindow::~MainWindow() {
-    delete _playButton;
-    delete _pauseButton;
+    delete _modeButton;
+    delete _pauseOrPlayButton;
     delete _stopButton;
     delete _previousButton;
     delete _nextButton;
@@ -131,32 +135,47 @@ MainWindow::~MainWindow() {
     delete _playlistComboBox;
 }
 
-void MainWindow::onPlayButtonClicked() {
-    _core.play();
+void MainWindow::onModeButtonClicked() {
+    // 切换播放模式(顺序播放/单曲循环/随机播放)
+    int mode = static_cast<int>(_core.getPlayMode());
+    mode = (mode + 1) % static_cast<int>(PlaylistManager::PlayMode::ModeMax); // 循环播放模式
+    _core.setPlayMode(static_cast<PlaylistManager::PlayMode>(mode));
+    _refreshUI();
 }
 
-void MainWindow::onPauseButtonClicked() {
-    _core.pause();
+void MainWindow::onPauseOrPlayButtonClicked() {
+    if (_core.isPlaying()) {
+        _core.pause();
+    } else {
+        _core.play();
+    }
+    _refreshUI();
 }
 
 void MainWindow::onStopButtonClicked() {
     _core.stop();
+    _refreshUI();
 }
 
 void MainWindow::onPreviousButtonClicked() {
-    // 实现上一首逻辑
+    int previousIndex = _core.previous(); // 找到上一首歌曲的索引
+    _core.playSong(_core.getCurrentPlaylistIndex(), previousIndex); // 播放当前歌单的歌曲
+    _refreshUI();
 }
 
 void MainWindow::onNextButtonClicked() {
-    // 实现下一首逻辑
+    int nextIndex = _core.next(); // 找到下一首歌曲的索引
+    _core.playSong(_core.getCurrentPlaylistIndex(), nextIndex); // 播放当前歌单的歌曲
+    _refreshUI();
 }
 
 void MainWindow::onAddButtonClicked() {
     QString filePath = QFileDialog::getOpenFileName(this, "Select a Song", "", "Audio Files (*.mp3 *.wav *.flac)");
     if (!filePath.isEmpty()) {
-        _core.addSong(_currentPlaylistIndex, filePath.toStdString()); // 添加到当前歌单
-        _core.savePlaylistsToFile("playlists.txt");
-        _playlistView->refreshPlaylist(_core.getPlaylist(_currentPlaylistIndex));
+        _core.addSong(_core.getCurrentPlaylistIndex(), filePath.toStdString()); // 添加到当前歌单
+        _core.savePlaylistsToFile(PLAY_LIST_FILE);
+        _playlistView->refreshPlaylist(_core.getPlaylist(_core.getCurrentPlaylistIndex()));
+        _refreshUI();
     }
 }
 
@@ -186,9 +205,10 @@ void MainWindow::onVolumeSliderValueChanged(int value) {
 
 void MainWindow::onPlaylistItemSelected(QListWidgetItem *item) {
     int index = _playlistView->row(item);
+    _core.setCurrentSongIndex(index);
     if (index >= 0) {
-        _core.playSong(_currentPlaylistIndex, index); // 播放当前歌单的歌曲
-        _updateCurrentSongLabel();
+        _core.playSong(_core.getCurrentPlaylistIndex(), index); // 播放当前歌单的歌曲
+        _refreshUI();
     }
 }
 
@@ -212,6 +232,7 @@ void MainWindow::onFavoriteSongRequested(QPoint pos) {
     QAction *newAction = menu.addAction("New Playlist");
     QAction *addExisting = menu.addAction("Add to Existing Playlist");
     QAction *addFavorite = menu.addAction("Add to Favorite Playlist");
+    QAction *remove = menu.addAction("Remove from Playlist");
 
     // 显示菜单并等待用户选择
     QAction *selectedAction = menu.exec(_playlistView->viewport()->mapToGlobal(pos));
@@ -225,56 +246,114 @@ void MainWindow::onFavoriteSongRequested(QPoint pos) {
                                                    QLineEdit::Normal, "", &ok);
         if (ok && !playlistName.isEmpty()) {
             _core.createPlaylist(playlistName.toStdString());
-            _refreshPlaylistComboBox();
-            _core.savePlaylistsToFile("playlists.txt");
+            _core.savePlaylistsToFile(PLAY_LIST_FILE);
             qDebug() << "Creating playlist:" << playlistName << "for song" << songIndex;
+            _updatePlaylistComboBox(); // 刷新歌单下拉框
         }
     }
     else if (selectedAction == addExisting) {
-        QMessageBox::information(this, "Info", "Adding to existing playlist");
+        // QMessageBox::information(this, "Info", "Adding to existing playlist");
+        QMenu playlistMenu(this);
+        int playlistCount = _core.getPlaylistCount();
+        for (int i = 0; i < playlistCount; ++i) {
+            QAction *playlistAction = playlistMenu.addAction(QString::fromStdString(_core.getPlaylist(i).getName()));
+            connect(playlistAction, &QAction::triggered, [=]() {
+                if(i == _core.getCurrentPlaylistIndex()) {
+                    QMessageBox::warning(this, "Warning", "Cannot add to current playlist");
+                    return;
+                }
+                _core.addSong(i, _core.getSong(_core.getCurrentPlaylistIndex(), songIndex)._filePath);
+                _core.savePlaylistsToFile(PLAY_LIST_FILE);
+                _playlistView->refreshPlaylist(_core.getPlaylist(_core.getCurrentPlaylistIndex()));
+            });
+        }
+        playlistMenu.exec(_playlistView->viewport()->mapToGlobal(pos));
     }
     else if (selectedAction == addFavorite) {
-        QMessageBox::information(this, "Info", "Adding to favorites");
+        // QMessageBox::information(this, "Info", "Adding to favorites");
+        _core.addSong(_core.getFavoritePlaylistIndex(), _core.getSong(_core.getCurrentPlaylistIndex(), songIndex)._filePath);
+        _core.savePlaylistsToFile(PLAY_LIST_FILE);
+        _playlistView->refreshPlaylist(_core.getPlaylist(_core.getCurrentPlaylistIndex()));
+    }
+    else if (selectedAction == remove) {
+        // QMessageBox::information(this, "Info", "Removing from playlist");
+        _core.removeSong(_core.getCurrentPlaylistIndex(), songIndex);
+        _core.savePlaylistsToFile(PLAY_LIST_FILE);
+        _playlistView->refreshPlaylist(_core.getPlaylist(_core.getCurrentPlaylistIndex()));
     }
 }
 
+void MainWindow::onSelectPlayModeRequested(QPoint pos) {
+    qDebug() << "onSelectPlayModeRequested";
+    QMenu menu(this);
+
+    QAction *sequentialAction = menu.addAction("Sequential");
+    QAction *shuffleAction = menu.addAction("Shuffle");
+    QAction *singleLoopAction = menu.addAction("SingleLoop");
+
+    QAction *selectedAction = menu.exec(_modeButton->mapToGlobal(pos));
+
+    if (selectedAction == sequentialAction) {
+        _core.setPlayMode(PlaylistManager::PlayMode::Sequential);
+    } else if (selectedAction == shuffleAction) {
+        _core.setPlayMode(PlaylistManager::PlayMode::Shuffle);
+    } else if (selectedAction == singleLoopAction) {
+        _core.setPlayMode(PlaylistManager::PlayMode::SingleLoop);
+    }
+    _refreshUI();
+}
+
+void MainWindow::_refreshUI() {
+    _updateCurrentSongLabel();
+    _updateTimeLabels();
+    _updatePlayStateLabel();
+    _updatePlayModeButton();
+}
+
 void MainWindow::_updateCurrentSongLabel() {
-    int playlistSize = _core.getPlaylistSize(_currentPlaylistIndex);
+    int playlistSize = _core.getPlaylistSize(_core.getCurrentPlaylistIndex());
     if (playlistSize > 0 && _core.isPlaying()) {
         // 假设播放器按照playlist index来播放
-        PlaylistEntry song = _core.getSong(_currentPlaylistIndex, 0);
-        _currentSongLabel->setText(QString::fromStdString(song._title + " - " + song._artist));
+        PlaylistEntry song = _core.getSong(_core.getCurrentPlaylistIndex(), _core.getCurrentSongIndex());
+        _currentSongLabel->setText(QString::fromStdString(song.getDisplayName()));
     } else {
         _currentSongLabel->setText("No song selected");
     }
 }
 
+void MainWindow::_updatePlayStateLabel() {
+    if (_core.isPlaying()) {
+        _pauseOrPlayButton->setText("Pause");
+    } else {
+        _pauseOrPlayButton->setText("Play");
+    }
+}
+
 void MainWindow::_updateTimeLabels() {
-    // 获取当前播放时间点和总时间
-    // 需要调用 Core 的方法，假设有 getCurrentPosition 和 getTotalDuration 方法
-    // 示例：
-    // int currentPosition = _core.getCurrentPosition(); // 单位：秒
-    // int totalDuration = _core.getTotalDuration(); // 单位：秒
+    int currentPosition = _core.getCurrentPosition(); // 单位：秒
+    int totalDuration = _core.getTotalDuration(); // 单位：秒
 
-    // QTime currentTime(currentPosition / 3600, (currentPosition % 3600) / 60, currentPosition % 60);
-    // QTime totalTime(totalDuration / 3600, (totalDuration % 3600) / 60, totalDuration % 60);
+    QTime currentTime(currentPosition / 3600, (currentPosition % 3600) / 60, currentPosition % 60);
+    QTime totalTime(totalDuration / 3600, (totalDuration % 3600) / 60, totalDuration % 60);
 
-    // _currentTimeLabel->setText(currentTime.toString("mm:ss"));
-    // _totalTimeLabel->setText(totalTime.toString("mm:ss"));
+    _currentTimeLabel->setText(currentTime.toString("mm:ss"));
+    _totalTimeLabel->setText(totalTime.toString("mm:ss"));
 
-    // _updatePositionSlider(); // 同时更新进度条
+    _updatePositionSlider();
+
+    if(currentPosition >= totalDuration) {  // 播放完毕,开始下一首
+        int nextIndex = _core.autoPlay(); // 找到下一首歌曲的索引
+        _core.playSong(_core.getCurrentPlaylistIndex(), nextIndex); // 播放当前歌单的歌曲
+        _refreshUI();
+    }
 }
 
 void MainWindow::_updatePositionSlider() {
-    // 更新进度条
-    // 需要调用 Core 的方法，获取当前播放进度百分比
-    // 示例：
-    // float positionPercentage = _core.getPositionPercentage(); // 0.0 - 1.0
-    // int sliderValue = static_cast<int>(positionPercentage * 100.0f);
-    // _positionSlider->setValue(sliderValue);
+    int sliderValue = _core.getPlaybackProgress();
+    _positionSlider->setValue(sliderValue);
 }
 
-void MainWindow::_refreshPlaylistComboBox() {
+void MainWindow::_updatePlaylistComboBox() {
     _playlistComboBox->clear();
     int playlistCount = _core.getPlaylistCount();
     for (int i = 0; i < playlistCount; ++i) {
@@ -283,8 +362,24 @@ void MainWindow::_refreshPlaylistComboBox() {
 }
 
 void MainWindow::onPlaylistComboBoxChanged(int index) {
+    qDebug() << "onPlaylistComboBoxChanged:" << index;
     if (index >= 0 && index < _core.getPlaylistCount()) {
-        _currentPlaylistIndex = index;
-        _playlistView->refreshPlaylist(_core.getPlaylist(_currentPlaylistIndex));
+        _core.setCurrentPlaylistIndex(index);
+        _playlistView->refreshPlaylist(_core.getPlaylist(index));
     }
+}
+
+std::string getPlayModeName(PlaylistManager::PlayMode mode) {
+    if (mode == PlaylistManager::PlayMode::Sequential) {
+        return "Sequential";
+    } else if (mode == PlaylistManager::PlayMode::Shuffle) {
+        return "Shuffle";
+    } else if (mode == PlaylistManager::PlayMode::SingleLoop) {
+        return "SingleLoop";
+    }
+    return "Unknown";
+}
+
+void MainWindow::_updatePlayModeButton() {
+    _modeButton->setText(getPlayModeName(_core.getPlayMode()).c_str());
 }

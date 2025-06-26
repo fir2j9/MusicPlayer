@@ -18,6 +18,23 @@ public:
 
     bool isPlaying() const;
 
+    void setPlayMode(PlaylistManager::PlayMode mode); // 设置播放模式
+    PlaylistManager::PlayMode getPlayMode() const; // 获取播放模式
+
+    int next();       // 下一首（根据播放模式）
+    int previous();   // 上一首（根据播放模式）
+    int autoPlay();    // 自动播放下一首
+
+    int getCurrentPlaylistIndex() const; // 获取当前播放列表索引
+    int getCurrentSongIndex() const;      // 获取当前歌曲索引
+
+    void setCurrentPlaylistIndex(int index); // 设置当前播放列表索引
+    void setCurrentSongIndex(int index);      // 设置当前歌曲索引
+
+    double getCurrentPosition() const; // 获取当前播放位置
+    double getTotalDuration() const;    // 获取总时长
+    int getPlaybackProgress() const; // 获取播放进度(0-100)
+
     // 播放列表管理
     void addSong(int playlistIndex, const std::string& filePath);
     void removeSong(int playlistIndex, int songIndex);

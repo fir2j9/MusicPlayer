@@ -1,6 +1,11 @@
 ﻿#pragma once
 
 #include <string>
+#include <taglib/fileref.h>
+#include <taglib/tag.h>
+#include <taglib/mpegfile.h>
+#include <taglib/id3v2tag.h>
+#include <memory>
 
 class MetadataReader
 {

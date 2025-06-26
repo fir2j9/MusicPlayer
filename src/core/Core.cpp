@@ -35,6 +35,54 @@ bool Core::isPlaying() const {
     return _player.isPlaying();
 }
 
+void Core::setPlayMode(PlaylistManager::PlayMode mode) {
+    _playlistManager.setPlayMode(mode);
+}
+
+PlaylistManager::PlayMode Core::getPlayMode() const {
+    return _playlistManager.getPlayMode();
+}
+
+int Core::next() {
+    return _playlistManager.getNextIndex();
+}
+
+int Core::previous() {    
+    return _playlistManager.getPreviousIndex();
+}
+
+int Core::autoPlay() {
+    return _playlistManager.autoplayNextIndex();
+}
+
+int Core::getCurrentPlaylistIndex() const {
+    return _playlistManager.getCurrentPlaylistIndex();
+}
+
+int Core::getCurrentSongIndex() const {
+    return _playlistManager.getCurrentSongIndex();
+}
+
+void Core::setCurrentPlaylistIndex(int index) {
+    _playlistManager.setCurrentPlaylistIndex(index);
+}
+
+void Core::setCurrentSongIndex(int index) {
+    _playlistManager.setCurrentSongIndex(index);
+}
+
+double Core::getCurrentPosition() const {
+    return _player.getCurrentPlaybackTime();
+}
+
+double Core::getTotalDuration() const {
+    return _player.getTotalDuration();
+}
+
+int Core::getPlaybackProgress() const {
+    return _player.getPlaybackProgress();
+}
+
 void Core::addSong(int playlistIndex, const std::string& filePath) {
     // 使用 MetadataReader 获取歌曲元数据
     MetadataReader* metadataReader = new MP3MetadataReader(); // 根据文件类型选择不同的 MetadataReader

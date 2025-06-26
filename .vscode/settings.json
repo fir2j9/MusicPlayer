@@ -97,6 +97,21 @@
     "streambuf": "cpp",
     "typeinfo": "cpp",
     "ctime": "cpp",
-    "map": "cpp"
+    "map": "cpp",
+    "list": "cpp",
+    "strstream": "cpp",
+    "cstring": "cpp",
+    "functional": "cpp",
+    "iterator": "cpp",
+    "set": "cpp",
+    "iomanip": "cpp",
+    "cinttypes": "cpp",
+    "chrono": "cpp",
+    "condition_variable": "cpp",
+    "ratio": "cpp",
+    "mutex": "cpp",
+    "thread": "cpp",
+    "random": "cpp",
+    "numeric": "cpp"
   }
 }

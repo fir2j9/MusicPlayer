@@ -3,19 +3,36 @@
 #include <iostream>
 #include <sstream>
 
+#define DEFAULT_PLAYLIST_NAME "default"
+#define FAVORITE_PLAYLIST_NAME "like"
+
 PlaylistManager::PlaylistManager() {
     // 创建默认歌单
-    createPlaylist("default");
+    createPlaylist(DEFAULT_PLAYLIST_NAME);
     _defaultPlaylistIndex = 0;
 
     // 创建“我喜欢”歌单
-    createPlaylist("like");
+    createPlaylist(FAVORITE_PLAYLIST_NAME);
     _favoritePlaylistIndex = 1;
+
+    _playMode = PlayMode::Sequential;
+
+    _currentPlaylistIndex = _defaultPlaylistIndex;
+    _currentSongIndex = -1;
+
+    _regenerateShuffleOrder();
 }
 
 PlaylistManager::~PlaylistManager() {}
 
 void PlaylistManager::createPlaylist(const std::string& playlistName) {
+    for (const auto& playlist : _playlists) {
+        if (playlist.getName() == playlistName) {
+            std::cerr << "Playlist already exists: " << playlistName << std::endl;
+            return;
+        }
+    }
+
     _playlists.emplace_back(); // 创建一个新的 Playlist 对象
     _playlists.back().setName(playlistName);
 }
@@ -27,12 +44,17 @@ void PlaylistManager::removePlaylist(int index) {
         // 需要更新 _favoritePlaylistIndex 和 _defaultPlaylistIndex 如果被删除的歌单在它们前面
         if (index < _defaultPlaylistIndex) _defaultPlaylistIndex--;
         if (index < _favoritePlaylistIndex) _favoritePlaylistIndex--;
+    } else {
+        std::cerr << "Invalid playlist index: " << index << std::endl;
     }
 }
 
 void PlaylistManager::renamePlaylist(int index, const std::string& newName) {
-    if (index >= 0 && index < _playlists.size()) {
+    if (index != _defaultPlaylistIndex && index != _favoritePlaylistIndex &&
+        index >= 0 && index < _playlists.size()) {
         _playlists[index].setName(newName);
+    } else {
+        std::cerr << "Invalid playlist index: " << index << std::endl;
     }
 }
 
@@ -148,11 +170,20 @@ bool PlaylistManager::loadPlaylistsFromFile(const std::string& filePath) {
             addSongToPlaylist(i, song);
         }
     }
-    _defaultPlaylistIndex = _findPlaylistIndex("默认歌单");
-    _favoritePlaylistIndex = _findPlaylistIndex("我喜欢");
+    _defaultPlaylistIndex = _findPlaylistIndex(DEFAULT_PLAYLIST_NAME);
+    _favoritePlaylistIndex = _findPlaylistIndex(FAVORITE_PLAYLIST_NAME);
     file.close();
     std::cout << "Playlists loaded from: " << filePath << std::endl;
     return true;
+}
+
+void PlaylistManager::setPlayMode(PlayMode playMode) {
+    if (_playMode != playMode) {
+        _playMode = playMode;
+        if (playMode == PlayMode::Shuffle) {
+            _regenerateShuffleOrder();
+        }
+    }
 }
 
 int PlaylistManager::_findPlaylistIndex(const std::string& playlistName) const {
@@ -162,4 +193,92 @@ int PlaylistManager::_findPlaylistIndex(const std::string& playlistName) const {
         }
     }
     return -1; // 未找到
+}
+
+void PlaylistManager::_regenerateShuffleOrder() {
+    _shuffleOrder.clear();
+    for (int i = 0; i < _playlists[_currentPlaylistIndex].getSize(); i++) {
+        _shuffleOrder.push_back(i);
+    }
+    
+    // 生成随机播放顺序
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(_shuffleOrder.begin(), _shuffleOrder.end(), g);
+    
+    _shuffleIndex = 0; // 重置随机索引
+}
+
+int PlaylistManager::getNextIndex() {
+    if (_playlists[_currentPlaylistIndex].getSize() == 0) return -1;
+    
+    switch (_playMode) {
+        case PlayMode::SingleLoop:
+        case PlayMode::Sequential:
+            if (_currentSongIndex + 1 < _playlists[_currentPlaylistIndex].getSize()) {
+                _currentSongIndex++;
+            } else {
+                _currentSongIndex = 0;
+            }
+            return _currentSongIndex;
+            
+        case PlayMode::Shuffle:
+            if (_shuffleOrder.empty()) return 0;
+            _shuffleIndex = (_shuffleIndex + 1) % _shuffleOrder.size();
+            _currentSongIndex = _shuffleOrder[_shuffleIndex];
+            return _currentSongIndex;
+
+        default:
+            return 0;
+    }
+}
+
+int PlaylistManager::getPreviousIndex() {
+    if (_playlists[_currentPlaylistIndex].getSize() == 0) return -1;
+    
+    switch (_playMode) {
+        case PlayMode::SingleLoop:
+        case PlayMode::Sequential:
+            if (_currentSongIndex > 0) {
+                _currentSongIndex--;
+            } else {
+                _currentSongIndex = _playlists[_currentPlaylistIndex].getSize() - 1;
+            }
+            return _currentSongIndex;
+            
+        case PlayMode::Shuffle:
+            if (_shuffleOrder.empty()) return 0;
+            _shuffleIndex = _shuffleIndex == 0 ? _shuffleOrder.size() - 1 : _shuffleIndex - 1;
+            _currentSongIndex = _shuffleOrder[_shuffleIndex];
+            return _currentSongIndex;
+
+        default:
+            return 0;
+    }
+}
+
+int PlaylistManager::autoplayNextIndex() {
+    if (_playlists[_currentPlaylistIndex].getSize() == 0) return -1;
+    
+    switch (_playMode) {
+        case PlayMode::Sequential:
+            if (_currentSongIndex + 1 < _playlists[_currentPlaylistIndex].getSize()) {
+                _currentSongIndex++;
+            } else {
+                _currentSongIndex = 0;
+            }
+            return _currentSongIndex;
+            
+        case PlayMode::Shuffle:
+            if (_shuffleOrder.empty()) return 0;
+            _shuffleIndex = (_shuffleIndex + 1) % _shuffleOrder.size();
+            _currentSongIndex = _shuffleOrder[_shuffleIndex];
+            return _currentSongIndex;
+            
+        case PlayMode::SingleLoop:
+            return _currentSongIndex; // 单曲循环返回当前歌曲
+            
+        default:
+            return 0;
+    }
 }
